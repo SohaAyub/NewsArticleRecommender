@@ -1,0 +1,60 @@
+import gradio as gr
+from sentence_transformers import SentenceTransformer, util
+import pandas as pd
+import torch
+
+# -- static dataset (10 items) --
+movies = [
+    {"title": "Movie_1","overview": "Space mission to explore distant galaxies."},
+    {"title": "Movie_2","overview": "Romantic love story in college."},
+    {"title": "Movie_3","overview": "Detective solves mysterious murder."},
+    {"title": "Movie_4","overview": "Superheroes unite to save the world."},
+    {"title": "Movie_5","overview": "Scientist travels through wormhole."},
+    {"title": "Movie_6","overview": "Underdog team wins the championship."},
+    {"title": "Movie_7","overview": "Horror story in a haunted house."},
+    {"title": "Movie_8","overview": "Entrepreneur builds a startup."},
+    {"title": "Movie_9","overview": "Historical war drama based on events."},
+    {"title": "Movie_10","overview": "AI becomes self-aware and challenges humanity."}
+]
+
+df = pd.DataFrame(movies)
+df["title_lower"] = df["title"].str.lower()
+
+# -- load sentence transformer model --
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+model = SentenceTransformer(MODEL_NAME)
+
+# -- precompute embeddings --
+movie_embeddings = model.encode(df["overview"].tolist(), convert_to_tensor=True)
+
+# -- recommendation function --
+def recommend_movie(movie_title):
+    movie_title = movie_title.strip().lower()
+    if movie_title not in df["title_lower"].values:
+        return "Movie not found. Try Movie_1 to Movie_10."
+    
+    idx = df.index[df["title_lower"] == movie_title][0]
+    query_emb = movie_embeddings[idx]
+
+    # cosine similarity
+    similarity = util.cos_sim(query_emb, movie_embeddings)[0]
+
+    # get top 6 indices (including the movie itself)
+    top_idxs = torch.topk(similarity, k=6).indices.tolist()
+
+    # exclude the original movie
+    recs = [df.iloc[i]["title"] for i in top_idxs if i != idx]
+
+    return "\n".join(recs)
+
+# -- Gradio interface --
+interface = gr.Interface(
+    fn=recommend_movie,
+    inputs=gr.Textbox(label="Enter Movie title"),
+    outputs="text",
+    title="Movie Recommender",
+    description="Enter a title (e.g., Movie_10) to get similar movies."
+)
+
+if __name__ == "__main__":
+    interface.launch()
